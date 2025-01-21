@@ -1,0 +1,96 @@
+%Load and convert image to double
+im2 = im2double(imread('..\Images\IMG_7355.JPG'));
+%Just use information from red and green channel, as blue is too bright.
+im2RG = ((im2(:,:,1) + im2(:,:,2))./2);
+
+%Can inspect the different RGB channels here.
+% figure(1);clf;imagesc(im2(:,:,1)); colorbar; Red
+% figure(2);clf;imagesc(im2(:,:,2)); colorbar; Green
+% figure(3);clf;imagesc(im2(:,:,3)); colorbar; Blue
+% 
+% figure(4);clf;imagesc(rgb2gray(im2)); colorbar
+% figure(5);clf;imagesc(im2RG); colorbar
+
+%Crop image to remove railing
+imCrop = im2RG(1001:2600,1:4000);
+[nr,~] = size(imCrop);
+%Define the vertices of the region to blank
+BW = roipoly(imCrop,[2300 4000 4000 2300],[nr 500 nr nr]);
+%Find the pixel indices of the region to blank
+CC = regionprops(BW,'PixelIdxList');
+
+%%
+%Remove background because illumination increases with distance from ship
+%to horizon. Therefore, need to "flatten" the image intensity plane
+%Set these to 2 
+imCrop(CC.PixelIdxList) = 2;
+%Calculate the background image as the minimum pixel within some moving
+%block.
+fun = @(block_struct) nanmin(nanmin(block_struct.data)) * ones(size(block_struct.data));
+%Here, can vary the size of each block. It needs to be large enough so it
+%is bigger than a single whitecap, but small enough to be useful.
+% There are other methods to remove the background also. 
+% See approach in Brumer paper that I emailed.
+BG = blockproc(imCrop,[150 150],fun);
+imCrop(CC.PixelIdxList) = NaN;
+BG(CC.PixelIdxList) = NaN;
+
+%Can try to smooth out the BG image with a Gaussian filter
+%This step does intoduce some edge effects near the blanked portion of the image
+BG = imgaussfilt(BG,30); 
+imCrop2 = imCrop - BG;
+%Display the images with and without background subtraction
+figure(1);clf;imagesc(imCrop);colorbar;
+title('Image without background removed');
+%This one should be somewhat more uniform.
+%The smaller the initial cropped image, the less noticeable the effect is.
+figure(2);clf;imagesc(imCrop2);colorbar;
+title('Image with background removed (Note edge effects of Filter)');
+
+%%
+%Calculate the Image Structure and PIP as outlined in Callaghan and WHite (2009)
+%Set up an intensity vector with the max val somewhere near the max
+%intensity
+iVec = [0:.01:max(max(imCrop2(:)))*0.9];
+%Calculate the PIP
+[a,b] = hist(imCrop2(:),iVec);
+%Flip to start at highest intensity threshold
+a_lr = fliplr(a); 
+b_lr = fliplr(b);
+%Get cumulative sum at each successively lower intensity
+a_lr_cs = cumsum(a_lr);
+PIP = gradient(a_lr_cs)./(a_lr_cs(1:end));
+smPIP = smooth(PIP,5);
+%Calculate first and second diffrences
+gradSmPIP = gradient(fliplr(smPIP));
+gradSmPIP2 = gradient(smooth(gradSmPIP,5));
+
+%Disply the image structure
+%Here, the transition between whitecap to background water occurs where you
+%see the very sharp rise in PIP value as pixel intensity decreases. 
+% The transition is continuous and not a step change because of hazy 
+% foam patches.
+figure(3),clf;plot(b_lr(1:end),PIP,'-ko');
+hold on
+plot(b_lr(1:end),smPIP,'-r.');
+xlabel('Pixel Intensity');
+ylabel('PIP');
+figure(4), plot(b_lr(1:end),fliplr(gradSmPIP2),'-ko');
+
+BW1 = imCrop2>0.42;
+figure(5),imshow(BW1);
+figure(6),imshow(imCrop2);
+
+%The task now is to automate the location of the peak in the 2nd
+%derivative. This task is best done when you have become more familiar with
+%the image processing, and the setup of your camera.
+%The algorithm will not always work because the ship moves, ambient light
+%conditions change, and whitecap sizes change. Unfrtunately, automation of 
+%an image processing routine is not a trivial task, and automatically
+%identifying whitecaps correctly requires a great deal of effort.
+
+%Be careful with the background removal, as it can also remove whitecap
+%signal.
+
+%Note in this example, the polariser reduced some of the intensity of the
+%whitecap in the middleground
