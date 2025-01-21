@@ -140,9 +140,8 @@ nr +------+  <-- Bottom of image
     '''
     np.nanmax(im_crop_subtracted): Finds the maximum intensity value in the image, ignoring NaN values.
     *0.9: Multiplies by 0.9 to avoid extreme outliers at the maximum intensity.
-    np.arange(start, stop, step): Creates a range of intensity thresholds from 0 to 90% of the max intensity with a step size of 0.01. 
+    np.arange(start, stop, step):  a range of intensity thresholds from 0 to 90% of the max intensity with a step size of 0.01. 
     '''
-    
     # Calculate the PIP
     hist, bin_edges = np.histogram(im_crop_subtracted[~np.isnan(im_crop_subtracted)], 
                                    bins=intensity_vector)
